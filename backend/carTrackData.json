@@ -1,0 +1,37 @@
+{
+  "formulair04::Lime Rock Park": {
+    "CarPath": "formulair04",
+    "TrackName": "Lime Rock Park",
+    "ConsumoMedio": 0,
+    "ConsumoUltimaVolta": 0,
+    "FuelCapacity": 0
+  },
+  "porsche992rgt3::Daytona International Speedway": {
+    "CarPath": "porsche992rgt3",
+    "TrackName": "Daytona International Speedway",
+    "ConsumoMedio": 0,
+    "ConsumoUltimaVolta": 0,
+    "FuelCapacity": 100
+  },
+  "formulair04::Okayama International Circuit": {
+    "CarPath": "formulair04",
+    "TrackName": "Okayama International Circuit",
+    "ConsumoMedio": 0,
+    "ConsumoUltimaVolta": 0,
+    "FuelCapacity": 40
+  },
+  "streetstock::Charlotte Motor Speedway": {
+    "CarPath": "streetstock",
+    "TrackName": "Charlotte Motor Speedway",
+    "ConsumoMedio": 0,
+    "ConsumoUltimaVolta": 0,
+    "FuelCapacity": 0
+  },
+  "raygr22::Oulton Park Circuit": {
+    "CarPath": "raygr22",
+    "TrackName": "Oulton Park Circuit",
+    "ConsumoMedio": 0,
+    "ConsumoUltimaVolta": 0,
+    "FuelCapacity": 22
+  }
+}

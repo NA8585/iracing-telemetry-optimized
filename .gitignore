@@ -1,0 +1,8 @@
+# Ignore build leftovers
+backend/cd
+backend/dotnet
+backend/rmdir
+backend/package-lock.json
+
+backend/bin/
+backend/obj/
