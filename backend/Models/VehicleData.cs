@@ -17,6 +17,7 @@ namespace SuperBackendNR85IA.Models
         public float FuelPress { get; set; }
         public float ManifoldPress { get; set; }
         public int EngineWarnings { get; set; }
+        public List<string> EngineWarningsDecoded { get; set; } = new List<string>(); // 🚨 CRÍTICO: Decodificado
         public bool OnPitRoad { get; set; }
         public float PlayerCarLastPitTime { get; set; }
         public int PlayerCarPitStopCount { get; set; }

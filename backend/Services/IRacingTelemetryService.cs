@@ -174,6 +174,148 @@ namespace SuperBackendNR85IA.Services
             _reader.Stop();
         }
 
+        // 🚨 FUNÇÃO CRÍTICA: Construir payload otimizado para frontend
+        private FrontendDataPayload BuildFrontendPayload(TelemetryModel telemetry)
+        {
+            // 🚀 OTIMIZAÇÃO: Filtrar apenas carros ativos (CarIdxLap > 0)
+            var activeCars = new List<int>();
+            for (int i = 0; i < telemetry.CarIdxLap.Length && i < 64; i++)
+            {
+                if (telemetry.CarIdxLap[i] > 0)
+                {
+                    activeCars.Add(i);
+                }
+            }
+
+            // 🚀 CRIAR payload otimizado com apenas dados necessários
+            var optimizedTelemetry = new TelemetryModel
+            {
+                // Dados básicos do jogador (sempre necessários)
+                Lap = telemetry.Lap,
+                LapDistPct = telemetry.LapDistPct,
+                LapCurrentLapTime = telemetry.LapCurrentLapTime,
+                LapLastLapTime = telemetry.LapLastLapTime,
+                LapBestLapTime = telemetry.LapBestLapTime,
+                LapDeltaToBestLap = telemetry.LapDeltaToBestLap,
+                LapDeltaToSessionBestLap = telemetry.LapDeltaToSessionBestLap,
+                LapDeltaToSessionOptimalLap = telemetry.LapDeltaToSessionOptimalLap,
+                Speed = telemetry.Speed,
+                Rpm = telemetry.Rpm,
+                Throttle = telemetry.Throttle,
+                Brake = telemetry.Brake,
+                Gear = telemetry.Gear,
+                FuelLevel = telemetry.FuelLevel,
+                FuelLevelPct = telemetry.FuelLevelPct,
+
+                // Dados de sessão com decodificações
+                Session = telemetry.Session,
+                Vehicle = telemetry.Vehicle,
+                Tyres = telemetry.Tyres,
+                
+                // 🚀 ARRAYS OTIMIZADOS: Só carros ativos
+                CarIdxLap = FilterArrayByActiveCars(telemetry.CarIdxLap, activeCars),
+                CarIdxPosition = FilterArrayByActiveCars(telemetry.CarIdxPosition, activeCars),
+                CarIdxOnPitRoad = FilterArrayByActiveCars(telemetry.CarIdxOnPitRoad, activeCars),
+                CarIdxLastLapTime = FilterArrayByActiveCars(telemetry.CarIdxLastLapTime, activeCars),
+                CarIdxBestLapTime = FilterArrayByActiveCars(telemetry.CarIdxBestLapTime, activeCars),
+                CarIdxLapDistPct = FilterArrayByActiveCars(telemetry.CarIdxLapDistPct, activeCars),
+                CarIdxUserNames = FilterArrayByActiveCars(telemetry.CarIdxUserNames, activeCars),
+                CarIdxCarNumbers = FilterArrayByActiveCars(telemetry.CarIdxCarNumbers, activeCars),
+                CarIdxTeamNames = FilterArrayByActiveCars(telemetry.CarIdxTeamNames, activeCars),
+                CarIdxIRatings = FilterArrayByActiveCars(telemetry.CarIdxIRatings, activeCars),
+                CarIdxLicStrings = FilterArrayByActiveCars(telemetry.CarIdxLicStrings, activeCars),
+                
+                // Outros dados importantes
+                LatAccel = telemetry.LatAccel,
+                LonAccel = telemetry.LonAccel,
+                VertAccel = telemetry.VertAccel,
+                AirTemp = telemetry.AirTemp,
+                TrackSurfaceTemp = telemetry.TrackSurfaceTemp,
+                WindSpeed = telemetry.WindSpeed,
+                WindDir = telemetry.WindDir,
+                
+                // Pressões e temperaturas de freio
+                LfBrakeLinePress = telemetry.LfBrakeLinePress,
+                RfBrakeLinePress = telemetry.RfBrakeLinePress,
+                LrBrakeLinePress = telemetry.LrBrakeLinePress,
+                RrBrakeLinePress = telemetry.RrBrakeLinePress,
+                BrakeTemp = telemetry.BrakeTemp
+            };
+
+            var payload = new FrontendDataPayload
+            {
+                Telemetry = optimizedTelemetry
+            };
+
+            // 📊 LOG para validação de otimização
+            if (_log.IsEnabled(LogLevel.Debug))
+            {
+                int originalSize = telemetry.CarIdxLap.Length;
+                int optimizedSize = activeCars.Count;
+                float reduction = originalSize > 0 ? (1 - (float)optimizedSize / originalSize) * 100 : 0;
+                
+                _log.LogDebug($"ARRAY OPTIMIZATION - " +
+                    $"Original: {originalSize} cars, " +
+                    $"Active: {optimizedSize} cars, " +
+                    $"Reduction: {reduction:F1}%");
+            }
+
+            return payload;
+        }
+
+        // 🚨 FUNÇÃO UTILITÁRIA: Filtrar arrays por carros ativos
+        private T[] FilterArrayByActiveCars<T>(T[] originalArray, List<int> activeCars)
+        {
+            if (originalArray == null || originalArray.Length == 0)
+                return Array.Empty<T>();
+
+            var result = new T[activeCars.Count];
+            for (int i = 0; i < activeCars.Count; i++)
+            {
+                int carIdx = activeCars[i];
+                if (carIdx < originalArray.Length)
+                {
+                    result[i] = originalArray[carIdx];
+                }
+                else
+                {
+                    result[i] = default(T)!;
+                }
+            }
+            return result;
+        }
+
+        // 🚨 FUNÇÃO: Construir payload de inputs (dados rápidos para overlays)
+        private object BuildInputsPayload(TelemetryModel telemetry)
+        {
+            // Payload super otimizado apenas com dados de input críticos
+            return new
+            {
+                throttle = telemetry.Throttle,
+                brake = telemetry.Brake,
+                clutch = telemetry.Clutch,
+                steeringAngle = telemetry.SteeringWheelAngle,
+                gear = telemetry.Gear,
+                rpm = telemetry.Rpm,
+                speed = telemetry.Speed,
+                
+                // Forças G para análise de pilotagem
+                latAccel = telemetry.LatAccel,
+                lonAccel = telemetry.LonAccel,
+                
+                // Estado crítico
+                sessionFlags = telemetry.Session.SessionFlagsDecoded,
+                engineWarnings = telemetry.Vehicle.EngineWarningsDecoded,
+                onPitRoad = telemetry.OnPitRoad,
+                
+                // Pressões críticas
+                lfPress = telemetry.LfPress,
+                rfPress = telemetry.RfPress,
+                lrPress = telemetry.LrPress,
+                rrPress = telemetry.RrPress
+            };
+        }
+
 
 
         private void UpdateLastHotPress(TelemetryModel t)

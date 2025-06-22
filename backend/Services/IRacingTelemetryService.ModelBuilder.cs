@@ -15,14 +15,17 @@ namespace SuperBackendNR85IA.Services
             var t = new TelemetryModel();
             using var perf = new Utilities.PerformanceMonitor(_log, "BuildTelemetry");
 
-            PopulateVehicleData(d, t);
+            PopulateSessionInfo(d, t); // PRIMEIRO para ter DisplayUnits disponível
+            PopulateVehicleData(d, t);  // SEGUNDO para usar DisplayUnits nas conversões
+            PopulatePhysicsData(d, t);  // TERCEIRO para forças G, ângulos e temperaturas ambientais
+            PopulateBrakeData(d, t);    // QUARTO para pressões e temperaturas de freio
+            PopulateLapDeltas(d, t);    // QUINTO para lap deltas críticos
+            PopulateTyres(d, t);        // SEXTO para usar DisplayUnits nas temperaturas dos pneus
             PopulateAllExtraData(d, t);
             UpdateLapInfo(d, t);
             ReadSectorTimes(d, t);
             ComputeForceFeedback(d, t);
             ComputeRelativeDistances(d, t);
-            PopulateSessionInfo(d, t);
-            PopulateTyres(d, t);
             if (_log.IsEnabled(LogLevel.Debug))
             {
                 _log.LogDebug(
@@ -36,6 +39,7 @@ namespace SuperBackendNR85IA.Services
             UpdateLastHotPress(t);
             await ApplyYamlData(d, t);
             RunCustomCalculations(d, t);
+            ValidateDataRanges(t); // 🚨 CRÍTICO: Validar ranges de dados
             TelemetryCalculations.SanitizeModel(t);
             await PersistCarTrackData(t);
 

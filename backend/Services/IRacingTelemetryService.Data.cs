@@ -29,6 +29,144 @@ namespace SuperBackendNR85IA.Services
             return kpa * 0.145037738f;
         }
 
+        // 🚨 CORREÇÃO CRÍTICA #2: Conversões baseadas em DisplayUnits
+        // DisplayUnits: 0=Imperial (°F, mph, psi), 1=Metric (°C, kph, bar)
+        private static float ConvertTemperature(float tempCelsius, int displayUnits)
+        {
+            if (float.IsNaN(tempCelsius) || float.IsInfinity(tempCelsius)) return 0f;
+            
+            // Se DisplayUnits = 0 (Imperial), converter para Fahrenheit
+            if (displayUnits == 0)
+            {
+                return tempCelsius * 9f / 5f + 32f;
+            }
+            
+            // DisplayUnits = 1 (Metric), manter Celsius
+            return tempCelsius;
+        }
+
+        // 🚨 CORREÇÃO CRÍTICA #3: Conversões de velocidade baseadas em DisplayUnits
+        private static float ConvertSpeed(float speedMs, int displayUnits)
+        {
+            if (float.IsNaN(speedMs) || float.IsInfinity(speedMs)) return 0f;
+            
+            if (displayUnits == 0)
+            {
+                // Imperial: m/s → mph
+                return speedMs * 2.23694f;
+            }
+            
+            // Metric: m/s → kph  
+            return speedMs * 3.6f;
+        }
+
+        // 🚨 CORREÇÃO CRÍTICA #4: Conversões de ângulos rad→graus
+        private static float RadToDegrees(float radians)
+        {
+            if (float.IsNaN(radians) || float.IsInfinity(radians)) return 0f;
+            return radians * 180f / (float)Math.PI;
+        }
+
+        // 🚨 CORREÇÃO CRÍTICA #5: Conversões de velocidade angular rad/s→graus/s
+        private static float RadPerSecToDegPerSec(float radPerSec)
+        {
+            if (float.IsNaN(radPerSec) || float.IsInfinity(radPerSec)) return 0f;
+            return radPerSec * 180f / (float)Math.PI;
+        }
+
+        // 🚨 VALIDAÇÃO CRÍTICA: Verificar ranges de dados
+        private void ValidateDataRanges(TelemetryModel t)
+        {
+            // 🔧 VALIDAÇÃO DE PRESSÕES (PSI ou kPa dependendo de DisplayUnits)
+            bool isImperial = t.Session.DisplayUnits == 0;
+            float minPress = isImperial ? 5f : 34f;    // 5 PSI ou 34 kPa
+            float maxPress = isImperial ? 70f : 483f;  // 70 PSI ou 483 kPa
+            string unit = isImperial ? "PSI" : "kPa";
+
+            ValidatePressureField(t.LfPress, "LF tire", minPress, maxPress, unit);
+            ValidatePressureField(t.RfPress, "RF tire", minPress, maxPress, unit);
+            ValidatePressureField(t.LrPress, "LR tire", minPress, maxPress, unit);
+            ValidatePressureField(t.RrPress, "RR tire", minPress, maxPress, unit);
+
+            // 🌡️ VALIDAÇÃO DE TEMPERATURAS (°C ou °F dependendo de DisplayUnits)
+            float minTemp = isImperial ? -4f : -20f;   // -4°F ou -20°C
+            float maxTemp = isImperial ? 392f : 200f;  // 392°F ou 200°C
+            string tempUnit = isImperial ? "°F" : "°C";
+
+            ValidateTemperatureField(t.Vehicle.WaterTemp, "Water temp", minTemp, maxTemp, tempUnit);
+            ValidateTemperatureField(t.Vehicle.OilTemp, "Oil temp", minTemp, maxTemp, tempUnit);
+            ValidateTemperatureField(t.AirTemp, "Air temp", minTemp, maxTemp, tempUnit);
+            ValidateTemperatureField(t.TrackSurfaceTemp, "Track temp", minTemp, maxTemp, tempUnit);
+
+            // 🏁 VALIDAÇÃO DE RPM (0-20000)
+            if (t.Vehicle.Rpm < 0 || t.Vehicle.Rpm > 20000)
+            {
+                _log.LogWarning($"⚠️ RPM fora de range: {t.Vehicle.Rpm:F0} (esperado: 0-20000)");
+            }
+
+            // 🏎️ VALIDAÇÃO DE VELOCIDADE
+            float maxSpeed = isImperial ? 250f : 400f; // 250 mph ou 400 kph
+            if (t.Vehicle.Speed < 0 || t.Vehicle.Speed > maxSpeed)
+            {
+                _log.LogWarning($"⚠️ Velocidade fora de range: {t.Vehicle.Speed:F1} {(isImperial ? "mph" : "kph")} (esperado: 0-{maxSpeed})");
+            }
+
+            // ⛽ VALIDAÇÃO DE COMBUSTÍVEL (0-100%)
+            if (t.Vehicle.FuelLevelPct < 0 || t.Vehicle.FuelLevelPct > 100)
+            {
+                _log.LogWarning($"⚠️ Combustível % fora de range: {t.Vehicle.FuelLevelPct:F1}% (esperado: 0-100%)");
+            }
+
+            // 🔧 VALIDAÇÃO DE DESGASTE DE PNEUS (0-100%)
+            ValidateWearArray(t.Tyres.LfWear, "LF wear");
+            ValidateWearArray(t.Tyres.RfWear, "RF wear");
+            ValidateWearArray(t.Tyres.LrWear, "LR wear");
+            ValidateWearArray(t.Tyres.RrWear, "RR wear");
+
+            // 🏁 VALIDAÇÃO DE FORÇAS G (-5g a +5g típico)
+            ValidateGForce(t.LatAccel, "Lateral G");
+            ValidateGForce(t.LonAccel, "Longitudinal G");
+            ValidateGForce(t.VertAccel, "Vertical G");
+        }
+
+        private void ValidatePressureField(float value, string fieldName, float min, float max, string unit)
+        {
+            if (value > 0 && (value < min || value > max))
+            {
+                _log.LogWarning($"⚠️ {fieldName} pressure fora de range: {value:F1} {unit} (esperado: {min:F0}-{max:F0} {unit})");
+            }
+        }
+
+        private void ValidateTemperatureField(float value, string fieldName, float min, float max, string unit)
+        {
+            if (value != 0 && (value < min || value > max))
+            {
+                _log.LogWarning($"⚠️ {fieldName} fora de range: {value:F1} {unit} (esperado: {min:F0}-{max:F0} {unit})");
+            }
+        }
+
+        private void ValidateWearArray(float[] wearArray, string tireName)
+        {
+            if (wearArray == null || wearArray.Length == 0) return;
+
+            for (int i = 0; i < wearArray.Length; i++)
+            {
+                float wear = wearArray[i];
+                if (wear < 0 || wear > 100)
+                {
+                    _log.LogWarning($"⚠️ {tireName}[{i}] fora de range: {wear:F1}% (esperado: 0-100%)");
+                }
+            }
+        }
+
+        private void ValidateGForce(float gForce, string gForceName)
+        {
+            if (Math.Abs(gForce) > 10f) // Limite extremo para alertar sobre valores suspeitos
+            {
+                _log.LogWarning($"⚠️ {gForceName} extremo: {gForce:F2}g (pode indicar problema de dados)");
+            }
+        }
+
         // 🔍 VALIDAÇÃO: Função para testar conversões
         private void ValidatePressureConversions()
         {
@@ -160,23 +298,227 @@ namespace SuperBackendNR85IA.Services
             t.Session.SessionUniqueID = GetSdkValue<long>(d, "SessionUniqueID") ?? 0;
             t.Session.SessionTick = GetSdkValue<int>(d, "SessionTick") ?? 0;
             t.Session.SessionOnJokerLap = GetSdkValue<bool>(d, "SessionOnJokerLap") ?? false;
+            
+            // 🚨 CRÍTICO: Popular DisplayUnits para conversões corretas
+            t.Session.DisplayUnits = (GetSdkValue<bool>(d, "DisplayUnits") ?? false) ? 0 : 1; // 0=Imperial, 1=Metric
+            
+            // 🚨 CRÍTICO: Decodificar SessionFlags, SessionState e PaceMode
+            t.Session.SessionFlagsDecoded = EnumTranslations.TranslateSessionFlags(t.Session.SessionFlags);
+            t.Session.SessionStateDecoded = EnumTranslations.TranslateSessionState(t.Session.SessionState);
+            t.Session.PaceModeDecoded = EnumTranslations.TranslatePaceMode(t.Session.PaceMode);
+        }
+
+        // 🚨 NOVA FUNÇÃO: Popular dados do veículo com conversões corretas
+        private void PopulateVehicleData(IRacingSdkData d, TelemetryModel t)
+        {
+            int displayUnits = t.Session.DisplayUnits;
+            
+            // Dados básicos do veículo
+            t.Vehicle.Speed = ConvertSpeed(GetSdkValue<float>(d, "Speed") ?? 0f, displayUnits);
+            t.Vehicle.Rpm = GetSdkValue<float>(d, "RPM") ?? 0f;
+            t.Vehicle.Throttle = GetSdkValue<float>(d, "Throttle") ?? 0f;
+            t.Vehicle.Brake = GetSdkValue<float>(d, "Brake") ?? 0f;
+            t.Vehicle.Clutch = GetSdkValue<float>(d, "Clutch") ?? 0f;
+            t.Vehicle.SteeringWheelAngle = RadToDegrees(GetSdkValue<float>(d, "SteeringWheelAngle") ?? 0f);
+            t.Vehicle.Gear = GetSdkValue<int>(d, "Gear") ?? 0;
+            
+            // Combustível
+            t.Vehicle.FuelLevel = GetSdkValue<float>(d, "FuelLevel") ?? 0f;
+            t.Vehicle.FuelLevelPct = GetSdkValue<float>(d, "FuelLevelPct") ?? 0f;
+            
+            // 🌡️ TEMPERATURAS com conversão baseada em DisplayUnits
+            t.Vehicle.WaterTemp = ConvertTemperature(GetSdkValue<float>(d, "WaterTemp") ?? 0f, displayUnits);
+            t.Vehicle.OilTemp = ConvertTemperature(GetSdkValue<float>(d, "OilTemp") ?? 0f, displayUnits);
+            
+            // 🔧 PRESSÕES com conversão correta kPa→PSI (se Imperial)
+            float? oilPressKpa = GetSdkValue<float>(d, "OilPress");
+            float? fuelPressKpa = GetSdkValue<float>(d, "FuelPress");
+            float? manifoldPressKpa = GetSdkValue<float>(d, "ManifoldPress");
+            
+            t.Vehicle.OilPress = displayUnits == 0 && oilPressKpa.HasValue ? KPaToPsi(oilPressKpa.Value) : (oilPressKpa ?? 0f);
+            t.Vehicle.FuelPress = displayUnits == 0 && fuelPressKpa.HasValue ? KPaToPsi(fuelPressKpa.Value) : (fuelPressKpa ?? 0f);
+            t.Vehicle.ManifoldPress = displayUnits == 0 && manifoldPressKpa.HasValue ? KPaToPsi(manifoldPressKpa.Value) : (manifoldPressKpa ?? 0f);
+            
+            // 📐 ÂNGULOS E VELOCIDADES ANGULARES com conversões rad→graus
+            t.Vehicle.YawRate = RadPerSecToDegPerSec(GetSdkValue<float>(d, "YawRate") ?? 0f);
+            t.Vehicle.PitchRate = RadPerSecToDegPerSec(GetSdkValue<float>(d, "PitchRate") ?? 0f);
+            t.Vehicle.RollRate = RadPerSecToDegPerSec(GetSdkValue<float>(d, "RollRate") ?? 0f);
+            
+            // Outros dados do veículo
+            t.Vehicle.EngineWarnings = GetSdkValue<int>(d, "EngineWarnings") ?? 0;
+            t.Vehicle.EngineWarningsDecoded = EnumTranslations.TranslateEngineWarnings(t.Vehicle.EngineWarnings); // 🚨 CRÍTICO: Decodificar
+            t.Vehicle.OnPitRoad = GetSdkValue<bool>(d, "OnPitRoad") ?? false;
+            t.Vehicle.PlayerCarLastPitTime = GetSdkValue<float>(d, "PlayerCarLastPitTime") ?? 0f;
+            t.Vehicle.PlayerCarPitStopCount = GetSdkValue<int>(d, "PlayerCarPitStopCount") ?? 0;
+            t.Vehicle.PitRepairLeft = GetSdkValue<float>(d, "PitRepairLeft") ?? 0f;
+            t.Vehicle.PitOptRepairLeft = GetSdkValue<float>(d, "PitOptRepairLeft") ?? 0f;
+            t.Vehicle.CarSpeed = ConvertSpeed(GetSdkValue<float>(d, "CarSpeed") ?? 0f, displayUnits);
+            
+            // 📊 LOG para validação de conversões
+            if (_log.IsEnabled(LogLevel.Debug))
+            {
+                _log.LogDebug($"VEHICLE TEMPS - DisplayUnits: {displayUnits} - " +
+                    $"Water: {t.Vehicle.WaterTemp:F1}°{(displayUnits == 0 ? "F" : "C")}, " +
+                    $"Oil: {t.Vehicle.OilTemp:F1}°{(displayUnits == 0 ? "F" : "C")}");
+                    
+                _log.LogDebug($"VEHICLE PRESSURES - " +
+                    $"Oil: {t.Vehicle.OilPress:F1} {(displayUnits == 0 ? "PSI" : "kPa")}, " +
+                    $"Fuel: {t.Vehicle.FuelPress:F1} {(displayUnits == 0 ? "PSI" : "kPa")}, " +
+                    $"Manifold: {t.Vehicle.ManifoldPress:F1} {(displayUnits == 0 ? "PSI" : "kPa")}");
+                    
+                _log.LogDebug($"ENGINE WARNINGS - " +
+                    $"Raw: {t.Vehicle.EngineWarnings}, " +
+                    $"Decoded: [{string.Join(", ", t.Vehicle.EngineWarningsDecoded)}]");
+                    
+                _log.LogDebug($"SESSION FLAGS - " +
+                    $"Raw: {t.Session.SessionFlags}, " +
+                    $"Decoded: [{string.Join(", ", t.Session.SessionFlagsDecoded)}]");
+                    
+                _log.LogDebug($"SESSION STATE - " +
+                    $"Raw: {t.Session.SessionState} ({t.Session.SessionStateDecoded}), " +
+                    $"PaceMode: {t.Session.PaceMode} ({t.Session.PaceModeDecoded})");
+            }
+        }
+
+        // 🚨 NOVA FUNÇÃO: Popular dados de força G e ângulos
+        private void PopulatePhysicsData(IRacingSdkData d, TelemetryModel t)
+        {
+            // 🏁 FORÇAS G (acelerações lineares)
+            t.LatAccel = GetSdkValue<float>(d, "LatAccel") ?? 0f;  // m/s² - lateral
+            t.LonAccel = GetSdkValue<float>(d, "LongAccel") ?? 0f; // m/s² - longitudinal  
+            t.VertAccel = GetSdkValue<float>(d, "VertAccel") ?? 0f; // m/s² - vertical
+            
+            // 📐 ÂNGULOS DA PISTA/CARRO (rad→graus)
+            t.Yaw = RadToDegrees(GetSdkValue<float>(d, "Yaw") ?? 0f);
+            t.Pitch = RadToDegrees(GetSdkValue<float>(d, "Pitch") ?? 0f);
+            t.Roll = RadToDegrees(GetSdkValue<float>(d, "Roll") ?? 0f);
+            
+            // 🌡️ TEMPERATURAS AMBIENTAIS com conversão DisplayUnits
+            int displayUnits = t.Session.DisplayUnits;
+            t.AirTemp = ConvertTemperature(GetSdkValue<float>(d, "AirTemp") ?? 0f, displayUnits);
+            t.TrackSurfaceTemp = ConvertTemperature(GetSdkValue<float>(d, "TrackSurfaceTemp") ?? 0f, displayUnits);
+            t.TrackTempCrew = ConvertTemperature(GetSdkValue<float>(d, "TrackTempCrew") ?? 0f, displayUnits);
+            
+            // 🌬️ VENTO com conversões
+            t.WindSpeed = ConvertSpeed(GetSdkValue<float>(d, "WindVel") ?? 0f, displayUnits);
+            t.WindDir = RadToDegrees(GetSdkValue<float>(d, "WindDir") ?? 0f);
+            
+            // 📊 LOG para validação
+            if (_log.IsEnabled(LogLevel.Debug))
+            {
+                _log.LogDebug($"PHYSICS DATA - G-Forces: Lat:{t.LatAccel:F2}g, Lon:{t.LonAccel:F2}g, Vert:{t.VertAccel:F2}g");
+                _log.LogDebug($"ANGLES - Yaw:{t.Yaw:F1}°, Pitch:{t.Pitch:F1}°, Roll:{t.Roll:F1}°");
+                _log.LogDebug($"ENVIRONMENT - Air:{t.AirTemp:F1}°{(displayUnits == 0 ? "F" : "C")}, " +
+                    $"Track:{t.TrackSurfaceTemp:F1}°{(displayUnits == 0 ? "F" : "C")}, " +
+                    $"Wind:{t.WindSpeed:F1}{(displayUnits == 0 ? "mph" : "kph")} @ {t.WindDir:F0}°");
+            }
+        }
+
+        // 🚨 NOVA FUNÇÃO: Popular dados de freio com conversões corretas
+        private void PopulateBrakeData(IRacingSdkData d, TelemetryModel t)
+        {
+            int displayUnits = t.Session.DisplayUnits;
+            
+            // 🔧 PRESSÕES DE LINHA DE FREIO com conversão kPa→PSI (se Imperial)
+            float? lfBrakeLineKpa = GetSdkValue<float>(d, "LFbrakeLinePress");
+            float? rfBrakeLineKpa = GetSdkValue<float>(d, "RFbrakeLinePress");
+            float? lrBrakeLineKpa = GetSdkValue<float>(d, "LRbrakeLinePress");
+            float? rrBrakeLineKpa = GetSdkValue<float>(d, "RRbrakeLinePress");
+            
+            t.LfBrakeLinePress = displayUnits == 0 && lfBrakeLineKpa.HasValue ? KPaToPsi(lfBrakeLineKpa.Value) : (lfBrakeLineKpa ?? 0f);
+            t.RfBrakeLinePress = displayUnits == 0 && rfBrakeLineKpa.HasValue ? KPaToPsi(rfBrakeLineKpa.Value) : (rfBrakeLineKpa ?? 0f);
+            t.LrBrakeLinePress = displayUnits == 0 && lrBrakeLineKpa.HasValue ? KPaToPsi(lrBrakeLineKpa.Value) : (lrBrakeLineKpa ?? 0f);
+            t.RrBrakeLinePress = displayUnits == 0 && rrBrakeLineKpa.HasValue ? KPaToPsi(rrBrakeLineKpa.Value) : (rrBrakeLineKpa ?? 0f);
+            
+            // 🌡️ TEMPERATURAS DE FREIO com conversão DisplayUnits
+            var brakeTemps = GetSdkArray<float>(d, "BrakeTemp");
+            if (brakeTemps.Length >= 4)
+            {
+                t.BrakeTemp = new float[] {
+                    ConvertTemperature(brakeTemps[0] ?? 0f, displayUnits), // LF
+                    ConvertTemperature(brakeTemps[1] ?? 0f, displayUnits), // RF
+                    ConvertTemperature(brakeTemps[2] ?? 0f, displayUnits), // LR
+                    ConvertTemperature(brakeTemps[3] ?? 0f, displayUnits)  // RR
+                };
+            }
+            else
+            {
+                t.BrakeTemp = new float[] { 0f, 0f, 0f, 0f };
+            }
+            
+            // 📊 LOG para validação de freios
+            if (_log.IsEnabled(LogLevel.Debug))
+            {
+                _log.LogDebug($"BRAKE DATA - " +
+                    $"Line Pressures: LF:{t.LfBrakeLinePress:F1}, RF:{t.RfBrakeLinePress:F1}, " +
+                    $"LR:{t.LrBrakeLinePress:F1}, RR:{t.RrBrakeLinePress:F1} {(displayUnits == 0 ? "PSI" : "kPa")}");
+                    
+                _log.LogDebug($"BRAKE TEMPS - " +
+                    $"LF:{t.BrakeTemp[0]:F1}°{(displayUnits == 0 ? "F" : "C")}, " +
+                    $"RF:{t.BrakeTemp[1]:F1}°{(displayUnits == 0 ? "F" : "C")}, " +
+                    $"LR:{t.BrakeTemp[2]:F1}°{(displayUnits == 0 ? "F" : "C")}, " +
+                    $"RR:{t.BrakeTemp[3]:F1}°{(displayUnits == 0 ? "F" : "C")}");
+            }
+        }
+
+        // 🚨 NOVA FUNÇÃO: Popular lap deltas críticos do SDK
+        private void PopulateLapDeltas(IRacingSdkData d, TelemetryModel t)
+        {
+            // 🏁 LAP DELTAS conforme SDK oficial (segundos)
+            t.LapDeltaToBestLap = GetSdkValue<float>(d, "LapDeltaToBestLap") ?? 0f;
+            t.LapDeltaToSessionBestLap = GetSdkValue<float>(d, "LapDeltaToSessionBestLap") ?? 0f;
+            t.LapDeltaToSessionOptimalLap = GetSdkValue<float>(d, "LapDeltaToSessionOptimalLap") ?? 0f;
+            t.LapDeltaToDriverBestLap = GetSdkValue<float>(d, "LapDeltaToOptimalLap") ?? 0f; // Optimal lap do próprio piloto
+            
+            // 🏁 LAP TIMES básicos (segundos)
+            t.LapCurrentLapTime = GetSdkValue<float>(d, "LapCurrentLapTime") ?? 0f;
+            t.LapLastLapTime = GetSdkValue<float>(d, "LapLastLapTime") ?? 0f;
+            t.LapBestLapTime = GetSdkValue<float>(d, "LapBestLapTime") ?? 0f;
+            t.LapDistPct = GetSdkValue<float>(d, "LapDistPct") ?? 0f;
+            t.Lap = GetSdkValue<int>(d, "Lap") ?? 0;
+            
+            // 📊 LOG para validação de lap data
+            if (_log.IsEnabled(LogLevel.Debug))
+            {
+                _log.LogDebug($"LAP DELTAS - " +
+                    $"ToBest: {t.LapDeltaToBestLap:+0.000;-0.000;0.000}s, " +
+                    $"ToSessionBest: {t.LapDeltaToSessionBestLap:+0.000;-0.000;0.000}s, " +
+                    $"ToSessionOptimal: {t.LapDeltaToSessionOptimalLap:+0.000;-0.000;0.000}s, " +
+                    $"ToOptimal: {t.LapDeltaToDriverBestLap:+0.000;-0.000;0.000}s");
+                    
+                _log.LogDebug($"LAP TIMES - " +
+                    $"Current: {FormatLapTime(t.LapCurrentLapTime)}, " +
+                    $"Last: {FormatLapTime(t.LapLastLapTime)}, " +
+                    $"Best: {FormatLapTime(t.LapBestLapTime)}, " +
+                    $"Progress: {t.LapDistPct:P1}");
+            }
+        }
+
+        // 🚨 UTILITÁRIO: Formatar tempo de volta para logs
+        private static string FormatLapTime(float seconds)
+        {
+            if (seconds <= 0) return "--:--.---";
+            var ts = TimeSpan.FromSeconds(seconds);
+            return $"{ts.Minutes:D2}:{ts.Seconds:D2}.{ts.Milliseconds:D3}";
         }
 
         private void PopulateTyres(IRacingSdkData d, TelemetryModel t)
         {
-            // 🌡️ TEMPERATURAS DOS PNEUS (já funcionam corretamente)
-            t.Tyres.LfTempCl = GetSdkValue<float>(d, "LFtempCL") ?? 0f;
-            t.Tyres.LfTempCm = GetSdkValue<float>(d, "LFtempCM") ?? 0f;
-            t.Tyres.LfTempCr = GetSdkValue<float>(d, "LFtempCR") ?? 0f;
-            t.Tyres.RfTempCl = GetSdkValue<float>(d, "RFtempCL") ?? 0f;
-            t.Tyres.RfTempCm = GetSdkValue<float>(d, "RFtempCM") ?? 0f;
-            t.Tyres.RfTempCr = GetSdkValue<float>(d, "RFtempCR") ?? 0f;
-            t.Tyres.LrTempCl = GetSdkValue<float>(d, "LRtempCL") ?? 0f;
-            t.Tyres.LrTempCm = GetSdkValue<float>(d, "LRtempCM") ?? 0f;
-            t.Tyres.LrTempCr = GetSdkValue<float>(d, "LRtempCR") ?? 0f;
-            t.Tyres.RrTempCl = GetSdkValue<float>(d, "RRtempCL") ?? 0f;
-            t.Tyres.RrTempCm = GetSdkValue<float>(d, "RRtempCM") ?? 0f;
-            t.Tyres.RrTempCr = GetSdkValue<float>(d, "RRtempCR") ?? 0f;
+            // 🌡️ TEMPERATURAS DOS PNEUS com conversão baseada em DisplayUnits
+            int displayUnits = t.Session.DisplayUnits;
+            
+            t.Tyres.LfTempCl = ConvertTemperature(GetSdkValue<float>(d, "LFtempCL") ?? 0f, displayUnits);
+            t.Tyres.LfTempCm = ConvertTemperature(GetSdkValue<float>(d, "LFtempCM") ?? 0f, displayUnits);
+            t.Tyres.LfTempCr = ConvertTemperature(GetSdkValue<float>(d, "LFtempCR") ?? 0f, displayUnits);
+            t.Tyres.RfTempCl = ConvertTemperature(GetSdkValue<float>(d, "RFtempCL") ?? 0f, displayUnits);
+            t.Tyres.RfTempCm = ConvertTemperature(GetSdkValue<float>(d, "RFtempCM") ?? 0f, displayUnits);
+            t.Tyres.RfTempCr = ConvertTemperature(GetSdkValue<float>(d, "RFtempCR") ?? 0f, displayUnits);
+            t.Tyres.LrTempCl = ConvertTemperature(GetSdkValue<float>(d, "LRtempCL") ?? 0f, displayUnits);
+            t.Tyres.LrTempCm = ConvertTemperature(GetSdkValue<float>(d, "LRtempCM") ?? 0f, displayUnits);
+            t.Tyres.LrTempCr = ConvertTemperature(GetSdkValue<float>(d, "LRtempCR") ?? 0f, displayUnits);
+            t.Tyres.RrTempCl = ConvertTemperature(GetSdkValue<float>(d, "RRtempCL") ?? 0f, displayUnits);
+            t.Tyres.RrTempCm = ConvertTemperature(GetSdkValue<float>(d, "RRtempCM") ?? 0f, displayUnits);
+            t.Tyres.RrTempCr = ConvertTemperature(GetSdkValue<float>(d, "RRtempCR") ?? 0f, displayUnits);
 
             // 🔧 PRESSÕES DOS PNEUS (usando conversão corrigida)
             // Cold pressures from the car setup (kPa)
@@ -302,32 +644,46 @@ namespace SuperBackendNR85IA.Services
                     _log.LogDebug("Cold tire pressure data not available for this car (LFcoldPressure missing).");
             }
 
-            // DESGASTE DOS PNEUS (quando no pit road)
-            if (onPitRoad)
+            // 🔧 DESGASTE DOS PNEUS (SEMPRE disponível conforme SDK oficial)
+            // Correção: O SDK fornece dados de desgaste sempre, não só no pit road
+            t.Tyres.LfWear = new float?[] {
+                GetSdkValue<float>(d, "LFWearL"),
+                GetSdkValue<float>(d, "LFWearM"),
+                GetSdkValue<float>(d, "LFWearR")
+            }.Select(v => v ?? 0f).ToArray();
+            
+            t.Tyres.RfWear = new float?[] {
+                GetSdkValue<float>(d, "RFWearL"),
+                GetSdkValue<float>(d, "RFWearM"),
+                GetSdkValue<float>(d, "RFWearR")
+            }.Select(v => v ?? 0f).ToArray();
+            
+            t.Tyres.LrWear = new float?[] {
+                GetSdkValue<float>(d, "LRWearL"),
+                GetSdkValue<float>(d, "LRWearM"),
+                GetSdkValue<float>(d, "LRWearR")
+            }.Select(v => v ?? 0f).ToArray();
+            
+            t.Tyres.RrWear = new float?[] {
+                GetSdkValue<float>(d, "RRWearL"),
+                GetSdkValue<float>(d, "RRWearM"),
+                GetSdkValue<float>(d, "RRWearR")
+            }.Select(v => v ?? 0f).ToArray();
+            
+            // 📊 CÁLCULO: Médias de desgaste por pneu (% de desgaste 0-100)
+            t.Tyres.LfWearAvg = t.Tyres.LfWear.Length > 0 ? t.Tyres.LfWear.Average() : 0f;
+            t.Tyres.RfWearAvg = t.Tyres.RfWear.Length > 0 ? t.Tyres.RfWear.Average() : 0f;
+            t.Tyres.LrWearAvg = t.Tyres.LrWear.Length > 0 ? t.Tyres.LrWear.Average() : 0f;
+            t.Tyres.RrWearAvg = t.Tyres.RrWear.Length > 0 ? t.Tyres.RrWear.Average() : 0f;
+            
+            // 📊 LOG para validação de desgaste
+            if (_log.IsEnabled(LogLevel.Debug))
             {
-                t.Tyres.LfWear = new float?[] {
-                    GetSdkValue<float>(d, "LFWearL"),
-                    GetSdkValue<float>(d, "LFWearM"),
-                    GetSdkValue<float>(d, "LFWearR")
-                }.Select(v => v ?? 0f).ToArray();
-                
-                t.Tyres.RfWear = new float?[] {
-                    GetSdkValue<float>(d, "RFWearL"),
-                    GetSdkValue<float>(d, "RFWearM"),
-                    GetSdkValue<float>(d, "RFWearR")
-                }.Select(v => v ?? 0f).ToArray();
-                
-                t.Tyres.LrWear = new float?[] {
-                    GetSdkValue<float>(d, "LRWearL"),
-                    GetSdkValue<float>(d, "LRWearM"),
-                    GetSdkValue<float>(d, "LRWearR")
-                }.Select(v => v ?? 0f).ToArray();
-                
-                t.Tyres.RrWear = new float?[] {
-                    GetSdkValue<float>(d, "RRWearL"),
-                    GetSdkValue<float>(d, "RRWearM"),
-                    GetSdkValue<float>(d, "RRWearR")
-                }.Select(v => v ?? 0f).ToArray();
+                _log.LogDebug($"TYRE WEAR - " +
+                    $"LF: [{string.Join(",", t.Tyres.LfWear.Select(w => $"{w:F1}%"))}] Avg:{t.Tyres.LfWearAvg:F1}%, " +
+                    $"RF: [{string.Join(",", t.Tyres.RfWear.Select(w => $"{w:F1}%"))}] Avg:{t.Tyres.RfWearAvg:F1}%, " +
+                    $"LR: [{string.Join(",", t.Tyres.LrWear.Select(w => $"{w:F1}%"))}] Avg:{t.Tyres.LrWearAvg:F1}%, " +
+                    $"RR: [{string.Join(",", t.Tyres.RrWear.Select(w => $"{w:F1}%"))}] Avg:{t.Tyres.RrWearAvg:F1}%");
             }
             
             // 🔧 CORREÇÃO FUTURA: UpdateLastHotPressures será adicionada aqui

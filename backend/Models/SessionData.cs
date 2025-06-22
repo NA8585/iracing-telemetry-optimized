@@ -25,6 +25,15 @@ namespace SuperBackendNR85IA.Models
         public int SessionTick { get; set; }
         public bool SessionOnJokerLap { get; set; }
 
+        // 🚨 ADIÇÃO CRÍTICA: DisplayUnits para conversões corretas
+        // 0 = Imperial (°F, mph, psi), 1 = Metric (°C, kph, bar)
+        public int DisplayUnits { get; set; } = 1; // Default Metric
+
+        // 🚨 ADIÇÃO CRÍTICA: Campos decodificados para frontend
+        public List<string> SessionFlagsDecoded { get; set; } = new List<string>();
+        public string SessionStateDecoded { get; set; } = string.Empty;
+        public string PaceModeDecoded { get; set; } = string.Empty;
+
         public System.TimeSpan TimeSpan => System.TimeSpan.FromSeconds(SessionTime);
         public System.TimeSpan TimeRemainingSpan => System.TimeSpan.FromSeconds(SessionTimeRemain);
     }
